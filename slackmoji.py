@@ -346,7 +346,10 @@ def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_
 
     # Continuously try to pull an emoji off the queue and upload it
     while download_thread.is_alive():
-        emoji_name, emoji_url, emoji_data = emoji_queue.get()
+        try:
+            emoji_name, emoji_url, emoji_data = emoji_queue.get(timeout=1)
+        except queue.Empty:
+            continue
 
         print("[*] Uploading emoji:", emoji_name)
         try:
