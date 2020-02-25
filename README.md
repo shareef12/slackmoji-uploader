@@ -7,7 +7,7 @@ Automatically upload emojis from slackmojis.com to a Slack workspace.
 This script requires some python dependencies and selenium's Chrome driver.
 
 ```
-python3 -m pip install requests selenium
+python3 -m pip install -U cairosvg pillow requests selenium sqlalchemy
 ```
 
 The chrome driver can be downloaded from
