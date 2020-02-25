@@ -4,9 +4,12 @@
 
 Dependencies:
 
+* cairosvg
+* pillow
 * requests
 * selenium
-* chromedriver
+* sqlalchemy
+* chromedriver (https://chromedriver.chromium.org/downloads)
 """
 
 import argparse
@@ -22,13 +25,15 @@ from contextlib import contextmanager
 from typing import BinaryIO, Generator, List, Tuple
 from urllib.parse import urlparse
 
+import cairosvg
 import requests
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchFrameException
 from sqlalchemy import create_engine
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
+from PIL import Image
 
 
 CACHE_FILE = ".emojicache.db"
@@ -131,11 +136,27 @@ class EmojiDownloader:
 
         path = urlparse(response.request.url).path
         emoji_fname = path.split("/")[-1]
-        emoji_name, _ = os.path.splitext(emoji_fname)
+        emoji_name, emoji_ext = os.path.splitext(emoji_fname)
+
+        # Slack only supports emojis in gif, jpeg, and png formats
+        emoji_ext = emoji_ext.lower()
+        if emoji_ext in (".gif", ".jpg", ".jpeg", ".png"):
+            emoji_content = response.content
+        elif emoji_ext == ".svg":
+            emoji_content = cairosvg.svg2png(bytestring=response.content)
+        elif emoji_ext in (".bmp", ".ico"):
+            im = Image.open(io.BytesIO(response.content))
+            fout = io.BytesIO()
+            im.save(fout, format="PNG")
+            fout.seek(0)
+            emoji_content = fout.read()
+        else:
+            print("[-] Unsupported emoji extension:", emoji_fname)
+            return
 
         # Insert it into the queue if it's new
         if self._is_new_emoji_name(emoji_name):
-            self._queue.put((emoji_name, url, response.content))
+            self._queue.put((emoji_name, url, emoji_content))
             return
 
         # The emoji's name is not unique, but we have not seen its url
@@ -211,7 +232,7 @@ class SlackClient:
         # use it later.
         try:
             driver.switch_to.frame("gantry-auth")
-        except NoSuchElementException:
+        except NoSuchFrameException:
             driver.close()
             raise LoginError(driver)
 
@@ -346,7 +367,10 @@ def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_
 
     # Continuously try to pull an emoji off the queue and upload it
     while download_thread.is_alive():
-        emoji_name, emoji_url, emoji_data = emoji_queue.get()
+        try:
+            emoji_name, emoji_url, emoji_data = emoji_queue.get(timeout=1)
+        except queue.Empty:
+            continue
 
         print("[*] Uploading emoji:", emoji_name)
         try:
