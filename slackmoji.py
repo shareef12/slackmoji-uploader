@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 import requests
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchFrameException
 from sqlalchemy import create_engine
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
@@ -211,7 +211,7 @@ class SlackClient:
         # use it later.
         try:
             driver.switch_to.frame("gantry-auth")
-        except NoSuchElementException:
+        except NoSuchFrameException:
             driver.close()
             raise LoginError(driver)
 
