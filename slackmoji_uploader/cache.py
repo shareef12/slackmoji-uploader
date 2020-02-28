@@ -1,13 +1,15 @@
+# pylint: disable=invalid-name,too-few-public-methods,global-statement
+
 """Helper for caching emoji metadata."""
 
 import hashlib
 import os
 from contextlib import contextmanager
+from typing import Any
 
-from sqlalchemy import create_engine
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, scoped_session, sessionmaker
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 CACHE_FILE_FMT = ".emojicache.{:s}.db"
 
@@ -16,14 +18,14 @@ Session = None
 
 
 @contextmanager
-def session_scope():
+def session_scope() -> Any:
     """Provide a transactional scope around a series of operations."""
     assert Session is not None, "Cache is not initialized"
     session = Session()
     try:
         yield session
         session.commit()
-    except:
+    except:     # noqa: E722
         session.rollback()
         raise
     finally:
@@ -31,18 +33,19 @@ def session_scope():
 
 
 class Emoji(DbBase):
+    """Database object for an Emoji."""
     __tablename__ = "emoji"
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
-    hash = Column(String(hashlib.sha256().digest_size))
+    hash = Column(String(hashlib.sha256().digest_size * 2))
     slackmojis_url = Column(String)
 
     def __repr__(self) -> str:
-        return "<EmojiName(name='{!s}')>".format(self.name)
+        return "<Emoji(name='{!s}')>".format(self.name)
 
 
-def initialize(workspace_name):
+def initialize(workspace_name: str) -> None:
     """Create or open the cache database."""
     global Session
 

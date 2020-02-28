@@ -14,8 +14,10 @@ SLACKMOJIS_EMOJI_LINK_CRE = re.compile(r'/emojis/[-0-9a-zA-Z]+/download')
 
 class SlackmojisClient:
     """A client for slackmojis.com."""
+    # pylint: disable=no-self-use
 
-    def _find_emojis_on_page(self, url: str, text: Optional[bytes] = None) -> Generator[str, None, None]:
+    def _find_emojis_on_page(self, url: str,
+                             text: Optional[str] = None) -> Generator[str, None, None]:
         """Yield links to all emojis on a single page.
 
         Args:
@@ -38,7 +40,6 @@ class SlackmojisClient:
         for match in SLACKMOJIS_EMOJI_LINK_CRE.finditer(text):
             yield SLACKMOJIS_BASE_URL + match.group(0)
 
-
     def download_emoji(self, url: str) -> Tuple[str, bytes]:
         """Download an emoji.
 
@@ -58,9 +59,10 @@ class SlackmojisClient:
         # emoji. We can't determine the emoji's filename until after we request
         # follow the redirect chain.
         path = urlparse(response.request.url).path
+        assert isinstance(path, str)
+
         emoji_fname = path.split("/")[-1]
         return (emoji_fname, response.content)
-
 
     def find_all_emojis(self) -> Generator[str, None, None]:
         """Yield links to all emojis.

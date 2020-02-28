@@ -1,16 +1,4 @@
-#!/usr/bin/env python3
-
-"""Upload emojis from slackmojis.com to a Slack workspace.
-
-Dependencies:
-
-* cairosvg
-* pillow
-* requests
-* selenium
-* sqlalchemy
-* chromedriver (https://chromedriver.chromium.org/downloads)
-"""
+"""Upload emojis from slackmojis.com to a Slack workspace."""
 
 import argparse
 import hashlib
@@ -20,7 +8,6 @@ import queue
 import threading
 import time
 from multiprocessing.pool import ThreadPool
-from typing import Optional
 from urllib.parse import urlparse
 
 import cairosvg
@@ -28,7 +15,7 @@ import requests
 from PIL import Image
 
 from slackmoji_uploader import cache
-from slackmoji_uploader.cache import session_scope, Emoji
+from slackmoji_uploader.cache import Emoji, session_scope
 from slackmoji_uploader.slack import SlackClient
 from slackmoji_uploader.slackmojis import SlackmojisClient
 
@@ -49,7 +36,7 @@ def emoji_url_in_cache(emoji_url: str) -> bool:
         return result is not None
 
 
-def download_emojis(queue: queue.Queue) -> None:
+def download_emojis(emoji_queue: queue.Queue) -> None:
     """Download new emojis and insert them into the specified queue."""
     client = SlackmojisClient()
 
@@ -72,19 +59,19 @@ def download_emojis(queue: queue.Queue) -> None:
         if emoji_ext == ".svg":
             emoji_content = cairosvg.svg2png(bytestring=emoji_content)
         elif emoji_ext in (".bmp", ".ico"):
-            im = Image.open(io.BytesIO(emoji_content))
+            image = Image.open(io.BytesIO(emoji_content))
             fout = io.BytesIO()
-            im.save(fout, format="PNG")
+            image.save(fout, format="PNG")
             fout.seek(0)
             emoji_content = fout.read()
         elif emoji_ext not in (".gif", ".jpg", ".jpeg", ".png"):
             print("[-] Unsupported emoji extension:", emoji_fname)
             continue
 
-        queue.put((emoji_name, emoji_url, emoji_content))
+        emoji_queue.put((emoji_name, emoji_url, emoji_content))
 
 
-def synchronize_cache(client: SlackClient, num_workers: Optional[int] = 25) -> None:
+def synchronize_cache(client: SlackClient, num_workers: int = 25) -> None:
     """Populate the slack with emojis already uploaded to slack.
 
     Args:
@@ -92,15 +79,16 @@ def synchronize_cache(client: SlackClient, num_workers: Optional[int] = 25) -> N
         num_workers: The number of threadpool workers to use. Note that these
             workers are IO bound, so having a large amount is ok.
     """
-    def sync_emoji(emoji_name, emoji_url):
+    def sync_emoji(emoji_name: str, emoji_url: str) -> None:
         with session_scope() as session:
             # If the emoji is not in the cache, we need to download it, hash
             # the contents, and add it to the cache.
             emoji = session.query(Emoji).filter(Emoji.name == emoji_name).first()
             if not emoji:
-                response = requests.get(emoji_url)  # Authentication is not required for these images
+                # Authentication is not required for these urls
+                response = requests.get(emoji_url)
                 response.raise_for_status()
-                emoji_hash = hashlib.sha256(response.content).digest()
+                emoji_hash = hashlib.sha256(response.content).hexdigest()
                 emoji = Emoji(name=emoji_name, hash=emoji_hash)
                 session.add(emoji)
 
@@ -131,14 +119,16 @@ def upload_emoji(client: SlackClient, emoji: Emoji, emoji_data: bytes) -> None:
     If the upload was successful, insert the emoji into the cache so we don't
     try to re-insert it on another run.
     """
+    assert emoji.name
     data = io.BytesIO(emoji_data)
     if client.upload_emoji(emoji.name, data):
         with session_scope() as session:
             session.add(emoji)
 
 
-def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_rate_limit: bool = False) -> None:
+def upload_all_emojis(workspace_url: str, email: str, password: str) -> None:
     """Try to upload all emojis from slackmojis.com to a slack workspace."""
+    # pylint: disable=too-many-locals
 
     # Login to the slack workspace
     print("[*] Logging into slack workspace:", workspace_url)
@@ -153,7 +143,7 @@ def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_
 
     # Start a downloader thread
     print("[*] Starting downloader thread")
-    emoji_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
+    emoji_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)   # type: queue.Queue
     download_thread = threading.Thread(target=download_emojis, args=(emoji_queue,), daemon=True)
     download_thread.start()
 
@@ -165,7 +155,7 @@ def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_
             continue
 
         # Check the emoji's hash to see if we've already uploaded it
-        emoji_hash = hashlib.sha256(emoji_data).digest()
+        emoji_hash = hashlib.sha256(emoji_data).hexdigest()
         with session_scope() as session:
             emoji = session.query(Emoji).filter(Emoji.hash == emoji_hash).first()
             if emoji:
@@ -196,7 +186,9 @@ def upload_all_emojis(workspace_url: str, email: str, password: str, relogin_on_
                 raise
 
 
-def main():
+def main() -> None:
+    # pylint: disable=missing-function-docstring
+
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("workspace", help="Full workspace base url")
 

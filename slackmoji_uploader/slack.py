@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import BinaryIO, Generator, Tuple
+from typing import BinaryIO, Generator, Optional, Tuple
 
 import requests
 from selenium import webdriver
@@ -14,11 +14,12 @@ class LoginError(Exception):
 
 
 class SlackClient:
+    """A slack client that can list and upload emojis."""
 
     def __init__(self, workspace_url: str):
         self._workspace_url = workspace_url
-        self._session = None
-        self._token = None
+        self._session = None    # type: Optional[requests.Session]
+        self._token = None      # type: Optional[str]
 
     def login(self, email: str, password: str) -> None:
         """Login to a slack workspace.
@@ -49,11 +50,11 @@ class SlackClient:
             driver.close()
             raise LoginError(driver)
 
-        m = re.search(r'"token":"([^"]+)', driver.page_source)
-        if not m:
+        match = re.search(r'"token":"([^"]+)', driver.page_source)
+        if not match:
             driver.close()
             raise LoginError("Unable to find token in login page")
-        self._token = m.groups()[0]
+        self._token = match.groups()[0]
 
         # Create a session object with the required cookies.
         self._session = requests.Session()
@@ -151,6 +152,7 @@ class SlackClient:
 
     def upload_emoji_from_file(self, pathname: str) -> bool:
         """Upload an emoji from a file."""
+        # pylint: disable=invalid-name
         name, _ = os.path.splitext(os.path.basename(pathname))
         with open(pathname, "rb") as f:
             return self.upload_emoji(name, f)
