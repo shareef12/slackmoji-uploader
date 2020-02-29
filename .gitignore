@@ -1,5 +1,6 @@
 # Project-specific items
 .emojicache.db
+.emojicache.*.db
 *.gif
 *.png
 *.swp
