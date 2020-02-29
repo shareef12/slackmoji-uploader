@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import io
+import multiprocessing
 import os
 import queue
 import threading
@@ -79,23 +80,34 @@ def synchronize_cache(client: SlackClient, num_workers: int = 50) -> None:
         num_workers: The number of threadpool workers to use. Note that these
             workers are IO bound, so having a large amount is ok.
     """
+    # Workaround for sqlite OperationalError - sqlite doesn't seem to like
+    # multithreaded connections. Since our threads are mostly waiting on
+    # network requests, locking on the database should not create an excessive
+    # slowdown.
+    cache_lock = multiprocessing.Lock()
+
     def sync_emoji(emoji_name: str, emoji_url: str) -> None:
-        with session_scope() as session:
+        with cache_lock, session_scope() as session:
             # If the emoji is not in the cache, we need to download it, hash
             # the contents, and add it to the cache.
             emoji = session.query(Emoji).filter(Emoji.name == emoji_name).first()
-            if not emoji:
-                # Authentication is not required for these urls
-                response = requests.get(emoji_url)
-                response.raise_for_status()
-                emoji_hash = hashlib.sha256(response.content).hexdigest()
-                emoji = Emoji(name=emoji_name, hash=emoji_hash)
-                session.add(emoji)
+            if emoji:
+                return
+
+        # Authentication is not required for these image urls
+        print("[*] Adding emoji to cache:", emoji_name)
+        response = requests.get(emoji_url)
+        response.raise_for_status()
+        emoji_hash = hashlib.sha256(response.content).hexdigest()
+        emoji = Emoji(name=emoji_name, hash=emoji_hash)
+        with cache_lock, session_scope() as session:
+            session.add(emoji)
 
     pool = ThreadPool(processes=num_workers)
     pool.starmap(sync_emoji, client.list_emojis(batchsize=500), chunksize=500//num_workers)
     pool.close()
     pool.join()
+    print("[+] Cache synchronized")
 
 
 def compute_emoji_name(emoji_fname: str) -> str:
