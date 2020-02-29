@@ -71,7 +71,7 @@ def download_emojis(emoji_queue: queue.Queue) -> None:
         emoji_queue.put((emoji_name, emoji_url, emoji_content))
 
 
-def synchronize_cache(client: SlackClient, num_workers: int = 25) -> None:
+def synchronize_cache(client: SlackClient, num_workers: int = 50) -> None:
     """Populate the slack with emojis already uploaded to slack.
 
     Args:
@@ -105,12 +105,12 @@ def compute_emoji_name(emoji_fname: str) -> str:
         return emoji_name
 
     # The emoji's name is already in the cache. Add a numeric suffix.
-    for i in range(1000):
-        candidate = "{:s}{:d}".format(emoji_name, i)
+    suffix = 2
+    while True:
+        candidate = "{:s}{:d}".format(emoji_name, suffix)
         if not emoji_name_in_cache(candidate):
             return candidate
-
-    raise RuntimeError("Unable to find unique emoji name:", emoji_fname)
+        suffix += 1
 
 
 def upload_emoji(client: SlackClient, emoji: Emoji, emoji_data: bytes) -> None:

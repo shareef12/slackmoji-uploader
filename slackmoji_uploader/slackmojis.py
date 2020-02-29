@@ -83,7 +83,7 @@ class SlackmojisClient:
 
         # Process child pages
         for match in SLACKMOJIS_CHILD_PAGE_CRE.finditer(response.text):
-            child_page = SLACKMOJIS_BASE_URL + match.group(0)
+            child_page = SLACKMOJIS_BASE_URL + match.group(1)
             print("[*] Finding emojis from:", child_page)
 
             try:
